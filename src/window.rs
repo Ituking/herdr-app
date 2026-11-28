@@ -980,7 +980,14 @@ impl AppWindow {
                     self.person = p;
                     let _ = std::fs::remove_file(file("settings.error"));
                 }
-                Err(e) => self.report("settings", &e),
+                Err(e) => {
+                    // The Settings screen still writes "Play sounds" into a file that
+                    // doesn't apply (another field's type is wrong): honor it anyway.
+                    if let Some(on) = settings::raw_switch("/sounds/enabled") {
+                        self.person.sounds.enabled = on;
+                    }
+                    self.report("settings", &e);
+                }
             }
             self.watched.settings = mtime(&settings::path());
             self.apply_look(window, cx);

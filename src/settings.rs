@@ -728,11 +728,18 @@ pub fn load_person() -> Result<Person, String> {
 pub fn telemetry_setting(person: &Result<Person, String>) -> bool {
     match person {
         Ok(p) => p.telemetry,
-        Err(_) => {
-            let raw = std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-            raw.and_then(|v| v.get("telemetry").and_then(serde_json::Value::as_bool)).unwrap_or(true)
-        }
+        Err(_) => raw_switch("/telemetry").unwrap_or(true),
     }
+}
+
+/// A switch as settings.json writes it (`/telemetry`, `/sounds/enabled`),
+/// read even when another field keeps the file from applying.
+pub fn raw_switch(pointer: &str) -> Option<bool> {
+    switch_in(&std::fs::read_to_string(path()).ok()?, pointer)
+}
+
+fn switch_in(text: &str, pointer: &str) -> Option<bool> {
+    serde_json::from_str::<serde_json::Value>(text).ok()?.pointer(pointer)?.as_bool()
 }
 
 pub fn write_person(person: &Person) -> std::io::Result<()> {
@@ -923,6 +930,17 @@ mod tests {
         let restored: Person = serde_json::from_str(&saved).unwrap();
         assert!(Settings::compose(&restored, &crate::layout::Look::default(), true).font_ligatures);
         assert!(serde_json::from_str::<Person>(r#"{"font_ligatures":"yes"}"#).is_err());
+    }
+
+    #[test]
+    fn switches_read_from_a_file_that_does_not_apply() {
+        use super::*;
+        let text = r#"{"sounds":{"enabled":false},"telemetry":false,"font_ligatures":"yes"}"#;
+        assert!(serde_json::from_str::<Person>(text).is_err());
+        assert_eq!(switch_in(text, "/sounds/enabled"), Some(false));
+        assert_eq!(switch_in(text, "/telemetry"), Some(false));
+        assert_eq!(switch_in(r#"{"sounds":{}}"#, "/sounds/enabled"), None);
+        assert_eq!(switch_in("{ mid-edit", "/sounds/enabled"), None);
     }
 
     use super::*;
